@@ -24,6 +24,7 @@ Why:              DRV-45581 is 0.61 km away but 3 road minutes out, beating DRV-
 The model call for this run (`nvidia/nemotron-3.5-super-vl:free`):
 
 ![OpenRouter Activity showing one Nemotron 3.5 Super VL (free) call](docs/openrouter-activity.png)
+Call details: 2026-11-15 07:21 (GMT+1), `nvidia/nemotron-3.5-super-vl:free`, Default key, 488 input / 691 output tokens, finish reason `stop`. This is the only call on the account, so it is the `RQ-0306-012` run above.
 
 ## Plan-mode prompt
 
