@@ -6,10 +6,21 @@ but never overrides a variable that is already set.
 """
 import json
 import os
+import ssl
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+
+
+def _ssl_context() -> ssl.SSLContext:
+    # python.org builds on macOS ship without system root certs; prefer certifi's bundle.
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
 
 
 def _load_dotenv(path: Path = ROOT / ".env") -> None:
@@ -49,7 +60,7 @@ def chat(messages: list[dict], model: str | None = None) -> str:
             "Content-Type": "application/json",
         },
     )
-    with urllib.request.urlopen(request) as response:
+    with urllib.request.urlopen(request, context=_ssl_context(), timeout=60) as response:
         body = json.load(response)
     return body["choices"][0]["message"]["content"]
 
