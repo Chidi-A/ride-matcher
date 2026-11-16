@@ -1,2 +1,3 @@
 langgraph==1.2.22
 certifi
+pytest==9.2.0
