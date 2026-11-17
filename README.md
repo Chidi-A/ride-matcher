@@ -2,7 +2,7 @@
 
 Matches one ride request to a driver with a two-node LangGraph graph:
 
-1. **`rank_drivers`** (plain code) runs three tool functions on every candidate row for the request, keeps the drivers who pass, drops any of them more than `MAX_EXTRA_PICKUP_MINUTES` (in `ride_config.py`, currently 5) slower than the fastest one, and ranks the rest by estimated road pickup minutes (ties broken by driver_id; straight-line km is never used):
+1. **`rank_drivers`** (plain code) runs three tool functions on every candidate row for the request, keeps the drivers who pass, drops any of them more than `MAX_EXTRA_PICKUP_MINUTES` (in `ride_config.py`, currently 3) slower than the fastest one, and ranks the rest by estimated road pickup minutes (ties broken by driver_id; straight-line km is never used):
    - `is_available(driver_id, request_id=None)`: true only when `driver_status` is `available`. A driver can show up under several requests with different statuses, so the graph always passes `request_id`. Called with a driver_id alone, it uses that driver's most recent status.
    - `pickup_minutes(driver_id, request_id)`: that row's `road_pickup_minutes`.
    - `is_eligible(driver_id, request_id)`: true only when the driver is a candidate row for that request and passes `is_available`.
@@ -53,52 +53,47 @@ For every request, the tests check that exactly one available driver is assigned
 
 ### Final pytest output
 
-The latest full run hit OpenRouter's free-model daily quota on its last live call (see the fix log below), and the quota hadn't reset when this section was written. So the passing result comes from two runs, both at `MAX_EXTRA_PICKUP_MINUTES = 5`.
-
-Offline suite, run again just before writing this section:
+Full suite, live tests included (19 real OpenRouter calls), at `MAX_EXTRA_PICKUP_MINUTES = 3`, run on 2026-11-17:
 
 ```
-$ .venv/bin/python -m pytest -m "not live"
+$ .venv/bin/python -m pytest -rfEs
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.1, pytest-9.2.0, pluggy-1.7.0
 rootdir: /Users/user/Desktop/Dev/ride-matcher
 configfile: pytest.ini
 testpaths: tests
 plugins: langsmith-0.14.17, anyio-4.16.0
-collected 139 items / 27 deselected / 112 selected
+collected 139 items
 
-tests/test_ride_matching.py ............................................ [ 39%]
-....................................................................     [100%]
+tests/test_ride_matching.py ............................................ [ 31%]
+........................................................................ [ 83%]
+.......................                                                  [100%]
 
-====================== 112 passed, 27 deselected in 0.39s ======================
+======================== 139 passed in 83.81s (0:01:23) ========================
 ```
 
-Live suite (19 real OpenRouter calls), run right after the limit was changed to 5. Only the summary line was kept:
+### Threshold: `MAX_EXTRA_PICKUP_MINUTES = 3`
 
-```
-$ .venv/bin/python -m pytest -m live -q
-...........................                                              [100%]
-27 passed, 112 deselected in 74.71s (0:01:14)
-```
-
-### Threshold: `MAX_EXTRA_PICKUP_MINUTES = 5`
-
-It's set in `ride_config.py`. It was 3 at first and was raised to 5.
+It's set in `ride_config.py`. It started at 3, was raised to 5 to see the effect, and is back at 3.
 
 **What the value changes in this dataset:**
 
-- **At 3:** 11 requests offer the model more than one driver. The extra drivers are only 0–3 minutes slower than the fastest.
-- **At 5:** 14 requests do. The three new ones are the requests where the driver who looks nearest by straight-line km is 4–5 minutes slower by road:
-  - RQ-0304-005: DRV-26148 (8 min) is offered next to DRV-47038 (4 min).
-  - RQ-0305-009: DRV-91254 (7 min) is offered next to DRV-57120 (3 min).
-  - RQ-0308-017: DRV-53761 (9 min) is offered next to DRV-34871 (4 min).
-- **Spreading rides across drivers:** the fastest driver for RQ-0305-009 (DRV-57120) is also the fastest for RQ-0305-008. The fastest for RQ-0308-017 (DRV-34871) is also the fastest for RQ-0306-011. At 3, those drivers are the only choice for both requests. At 5, the model has an alternative.
-- **Rider wait:** the worst case is 5 extra minutes. In this data that means an assigned pickup of up to 9 minutes where the fastest is 4.
-- **Unaffected:** the four requests where the nearest-by-km driver is 6–13 minutes slower (RQ-0303-002, RQ-0305-007, RQ-0306-012, RQ-0307-014) still never offer that driver.
+- **At 3:** 11 requests offer the model more than one driver. Each extra driver is at most 3 minutes slower than the fastest.
+- **At 5:** 14 requests would. The three extra ones are requests where the driver who looks nearest by straight-line km is 4–5 minutes slower by road:
+  - RQ-0304-005: DRV-26148 (8 min) would be offered next to DRV-47038 (4 min).
+  - RQ-0305-009: DRV-91254 (7 min) would be offered next to DRV-57120 (3 min).
+  - RQ-0308-017: DRV-53761 (9 min) would be offered next to DRV-34871 (4 min).
+- **Spreading rides across drivers:** at 3, DRV-57120 is the only choice for both RQ-0305-008 and RQ-0305-009, and DRV-34871 is the only choice for both RQ-0306-011 and RQ-0308-017. A limit of 5 would give the model an alternative for those.
+- **Rider wait:** at 3, an assigned driver is never more than 3 minutes slower than the fastest. At 5, a rider could wait 9 minutes when a 4-minute driver was free.
+- **Unaffected either way:** the four requests where the nearest-by-km driver is 6–13 minutes slower (RQ-0303-002, RQ-0305-007, RQ-0306-012, RQ-0307-014) never offer that driver.
 
-**Why 5 was chosen:** _TODO (owner): add your reasoning. The trade-off is up to 5 extra minutes of rider wait in exchange for a second driver option on 3 more requests._
+**Why 3 was chosen:** rider wait comes first. A limit of 5 would add an alternative on only 3 requests, and in all three that alternative is the nearer-looking driver who is 4–5 minutes slower by road: the exact mistake this matcher exists to avoid. At 3, rides can still be spread across drivers, since 11 of the 19 matched requests offer a second driver who is at most 3 minutes slower. The cost is that two drivers (DRV-57120 and DRV-34871) are each the only option for two requests.
 
-**What would make me change it:** _TODO (owner): add your conditions. Examples: rider complaints or cancellations rising with pickup time; drivers with repeat assignments while nearby drivers stay idle; pickup times that are generally longer, where a fixed number of minutes matters less._
+**What would make me change it:**
+
+- **Lower it** if rider complaints or cancellations rise with pickup time.
+- **Raise it** if the same drivers keep getting assigned while nearby drivers stay idle, or if one driver is the only option for requests close together in time.
+- **Make it relative** if typical pickup times grow, where a fixed number of minutes matters less: for example, a percentage of the fastest pickup time.
 
 ### Key prompt excerpt
 
@@ -125,9 +120,10 @@ Issues found later:
 
 | # | What happened | Cause | Fix made or rejected, and why |
 |---|---|---|---|
-| 1 | A full run gave `138 passed, 1 failed`: `test_each_request_gets_one_fast_available_driver_or_explicit_no_match[RQ-0309-020-live]` got `no_match` / `model_error`. | OpenRouter's free-model daily quota (`free-models-per-day`) ran out on the last live call. Not a matching bug: the same request passed in both earlier live runs and against every bad stand-in model. | **No code change.** The agent did the right thing: no retry on a daily quota, then an explicit no-match. Making live tests skip on quota errors was suggested but not done. |
+| 1 | A full run at limit 5 gave `138 passed, 1 failed`: `test_each_request_gets_one_fast_available_driver_or_explicit_no_match[RQ-0309-020-live]` got `no_match` / `model_error`. | OpenRouter's free-model daily quota (`free-models-per-day`) ran out on the last live call. Not a matching bug: the same request passed in both earlier live runs and against every bad stand-in model. | **No code change.** The agent did the right thing: no retry on a daily quota, then an explicit no-match. Making live tests skip on quota errors was suggested but not done. After the daily reset, the full suite passed (139 passed; see above). |
 | 2 | A report that an offline or ineligible driver reached the model for the bridge request, with a request to move the three checks before the OpenRouter call. | Not reproduced. A recording model across all 20 requests showed `rank_drivers` (the checks) runs before `pick_driver` (the call), and 0 ineligible drivers were sent. The offline drivers seen were excluded rows in a listing. | **Rejected: the code already worked this way.** The guard: `test_each_request_..._or_explicit_no_match[*-unavailable]`, whose stand-in model names an offline or on-trip candidate. It fails if such a driver is ever accepted. |
 | 3 | An option to fall back to a driver even when the model call fails (network, bad key, quota). | It would hide a broken model setup behind normal-looking matches. | **Not done.** Model errors stay a `model_error` no-match. Issue 1 shows the value: the live test failed openly instead of passing with a fallback driver. |
+| 4 | `MAX_EXTRA_PICKUP_MINUTES` changed from 3 to 5, then back to 3. | Choosing the threshold (see above). | **Config change only**, in `ride_config.py`. The tests import the value, so none needed editing. Both values passed the full suite. |
 
 **Rejected suggestions that hid a bad assignment:** none were rejected during testing. The closest is the earlier plan in [Pushback](#pushback), which silently assigned the top-ranked driver when the model's answer was invalid. Today an invalid or off-list answer still falls back, but only to a checked driver, and it's flagged with `choice_source: "fallback"`.
 
@@ -142,7 +138,7 @@ These were checked against `data/Uber Candidate Drivers Snapshot (week of 3-9 Ma
 
 **Real model pick:** RQ-0306-012 → DRV-45581 (3 min; fastest available 3 min; status `available`).
 
-**Fallback picks:** the table below is not the model's choices. The quota was used up, so each request ran with the model's answer forced to be rejected, and the fallback assigned the fastest checked driver. Every assigned driver is `available` in the snapshot. Ties at the fastest time go to the lower driver_id (RQ-0303-003, RQ-0307-013).
+**Fallback picks:** the table below is not the model's choices. The quota was used up when this table was made, so each request ran with the model's answer forced to be rejected, and the fallback assigned the fastest checked driver. Every assigned driver is `available` in the snapshot. Ties at the fastest time go to the lower driver_id (RQ-0303-003, RQ-0307-013).
 
 | request_id | assigned driver_id | road_pickup_minutes | fastest available |
 |---|---|---|---|
