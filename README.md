@@ -64,11 +64,11 @@ It's set in `ride_config.py`. It started at 3, was raised to 5 to see the effect
   - RQ-0304-005: DRV-26148 (8 min) would be offered next to DRV-47038 (4 min).
   - RQ-0305-009: DRV-91254 (7 min) would be offered next to DRV-57120 (3 min).
   - RQ-0308-017: DRV-53761 (9 min) would be offered next to DRV-34871 (4 min).
-- **Spreading rides across drivers:** at 3, DRV-57120 is the only choice for both RQ-0305-008 and RQ-0305-009, and DRV-34871 is the only choice for both RQ-0306-011 and RQ-0308-017. A limit of 5 would give the model an alternative for those.
+- **Spreading rides across drivers:** at 3, DRV-57120 is the only option for RQ-0305-009, and DRV-34871 is the only option for RQ-0308-017. Each is also the fastest driver for another request, but those requests have alternatives: RQ-0305-008 also offers DRV-68831, and RQ-0306-011 also offers DRV-50316 and DRV-88092. A limit of 5 would give the model an alternative for RQ-0305-009 and RQ-0308-017.
 - **Rider wait:** at 3, an assigned driver is never more than 3 minutes slower than the fastest. At 5, a rider could wait 9 minutes when a 4-minute driver was free.
 - **Unaffected either way:** the four requests where the nearest-by-km driver is 6–13 minutes slower (RQ-0303-002, RQ-0305-007, RQ-0306-012, RQ-0307-014) never offer that driver.
 
-**Why 3 was chosen:** rider wait comes first. A limit of 5 would add an alternative on only 3 requests, and in all three that alternative is the nearer-looking driver who is 4–5 minutes slower by road: the exact mistake this matcher exists to avoid. At 3, rides can still be spread across drivers, since 11 of the 19 matched requests offer a second driver who is at most 3 minutes slower. The cost is that two drivers (DRV-57120 and DRV-34871) are each the only option for two requests.
+**Why 3 was chosen:** rider wait comes first. A limit of 5 would add an alternative on only 3 requests, and in all three that alternative is the nearer-looking driver who is 4–5 minutes slower by road: the exact mistake this matcher exists to avoid. At 3, rides can still be spread across drivers, since 11 of the 19 matched requests offer a second driver who is at most 3 minutes slower. The cost is that DRV-57120 is the only option for RQ-0305-009 and DRV-34871 is the only option for RQ-0308-017.
 
 **What would make me change it:**
 
